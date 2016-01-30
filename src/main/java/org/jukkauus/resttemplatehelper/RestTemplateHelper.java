@@ -7,10 +7,8 @@ import org.springframework.http.*;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
 /**
@@ -18,29 +16,48 @@ import java.util.Arrays;
  */
 public class RestTemplateHelper {
 
-    public String get(String url) {
-        RestTemplate restTemplate = getRestTemplate(url);
+
+    public String get(String url, boolean ignoreSSLIssues) {
+        RestTemplate restTemplate = getRestTemplate(url, ignoreSSLIssues);
+        return getInternal(restTemplate, url);
+    }
+
+    private String getInternal(RestTemplate template, String url) {
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
         HttpEntity<String> entity = new HttpEntity<String>("parameters", headers);
-
-        ResponseEntity<String> result = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+        ResponseEntity<String> result = template.exchange(url, HttpMethod.GET, entity, String.class);
         return result.getStatusCode().toString();
+
     }
 
 
-    private RestTemplate getRestTemplate(String url) {
-        if (url.startsWith("https")) {
-            CloseableHttpClient httpClient = HttpClients.custom().setSSLHostnameVerifier(new NoopHostnameVerifier()).build();
-            HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
-            requestFactory.setHttpClient(httpClient);
-            return new RestTemplate(requestFactory);
-        } else {
-            return new RestTemplate();
+    private RestTemplate getRestTemplate(String url, boolean ignoreSSLIssues) {
+        RestTemplate restTemplate = null;
+        try {
+            if (url.startsWith("https")) {
+                if (ignoreSSLIssues) {
+                    SSLUtil.turnOffSslChecking();
+                    CustomSimpleClientHttpRequestFactory factory = new CustomSimpleClientHttpRequestFactory(new NoopHostnameVerifier());
+                    restTemplate = new RestTemplate(factory);
+                } else {
+                    SSLUtil.turnOnSslChecking();
+                    CloseableHttpClient httpClient = HttpClients.custom().setSSLHostnameVerifier(new NoopHostnameVerifier()).build();
+                    HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory();
+                    requestFactory.setHttpClient(httpClient);
+                    restTemplate = new RestTemplate(requestFactory);
+                }
+            } else {
+                SSLUtil.turnOnSslChecking();
+                restTemplate = new RestTemplate();
+            }
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (KeyManagementException e) {
+            e.printStackTrace();
         }
-
+        return restTemplate;
     }
-
 
 
 }
